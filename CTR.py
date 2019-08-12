@@ -1,13 +1,11 @@
 import numpy as np
-from scipy.integrate import odeint, ode
+from scipy.integrate import odeint
 import time
-
+from Tube import Tube
+from Segment import Segment
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 import matplotlib.pyplot as plt
-
-from Tube import Tube
-from Segment import Segment
 
 start_time = time.time()
 
@@ -18,12 +16,9 @@ tube2 = Tube(332e-3, 113e-3, 2 * 0.7e-3, 2 * 0.9e-3, 5.2548578304e+10, 2.1467424
 tube3 = Tube(174e-3, 134e-3, 2e-3, 2 * 1.1e-3, 4.7163091968e+10, 2.9788923392e+10, 3.5, 0)
 
 # Joint variables
-q = np.array([0.01, 0.015, 0.019, np.pi, np.pi*5/2, np.pi/2])
+q = np.array([0.01, 0.015, 0.019, np.pi, np.pi * 5 / 2, np.pi / 2])
 # Initial position of joints
 q_0 = np.array([-0.2858, -0.2025, -0.0945, 0, 0, 0])
-# initial twist
-uz_0 = np.array([0, 0, 0])
-uz_0.shape = (3, 1)
 # position of tubes' base from template (i.e., s=0)
 beta = q[0:3] + q_0[0:3]
 
@@ -67,52 +62,67 @@ def ode_eq(y, s, ux_0, uy_0, ei, gj):
     return dydt.ravel()
 
 
+# CTR model
+def ctr_model(uz_0, alpha_0, r_0, R_0):
+    Length = np.empty(0)
+    r = np.empty((0, 3))
+    u_z = np.empty((0, 3))
+    alpha = np.empty((0, 3))
+    for seg in range(0, len(segment.S)):
+        # Initial conditions, 3 initial twist + 3 initial angle + 3 initial position + 9 initial rotation matrix
+        y_0 = np.vstack((uz_0.reshape(3, 1), alpha_0, r_0, R_0)).ravel()
+        s_span = np.linspace(span[seg], span[seg + 1] - 1e-6, num=30)
+        s = odeint(ode_eq, y_0, s_span, args=(segment.U_x[:, seg], segment.U_y[:, seg], segment.EI[:, seg], segment.GJ))
+        Length = np.append(Length, s_span)
+        u_z = np.vstack((u_z, s[:, (0, 1, 2)]))
+        alpha = np.vstack((alpha, s[:, (3, 4, 5)]))
+        r = np.vstack((r, s[:, (6, 7, 8)]))
+
+        # new boundary conditions for next segment
+        r_0 = r[-1, :].reshape(3, 1)
+        R_0 = np.array(s[-1, 9:]).reshape(9, 1)
+        uz_0 = u_z[-1, :].reshape(3, 1)
+        alpha_0 = alpha[-1, :].reshape(3, 1)
+
+    d_tip = np.array([tube1.L, tube2.L, tube3.L]) + beta
+    u_z_end = np.array([0.0, 0.0, 0.0])
+    tip = np.array([0, 0, 0])
+    for k in range(0, 3):
+        b = np.argmax(Length >= d_tip[k] - 1e-3)  # Find where tube curve starts
+        u_z_end[k] = u_z[b, k]
+        tip[k] = b
+
+    return r, u_z_end, tip
+
+
 # initialize solved length, shape, curvatures, and twist angles
 # segmenting the tubes
 segment = Segment(tube1, tube2, tube3, beta)
 
 span = np.append([0], segment.S)
-r_0 = np.array([0, 0, 0]).reshape(3, 1)
+r_0_ = np.array([0, 0, 0]).reshape(3, 1)
 alpha_1_0 = q[3] + q_0[3]
-R_0 = np.array([[np.cos(alpha_1_0), -np.sin(alpha_1_0), 0], [np.sin(alpha_1_0), np.cos(alpha_1_0), 0], [0, 0, 1]]) \
+R_0_ = np.array([[np.cos(alpha_1_0), -np.sin(alpha_1_0), 0], [np.sin(alpha_1_0), np.cos(alpha_1_0), 0], [0, 0, 1]]) \
     .reshape(9, 1)
-alpha_0 = q[3:].reshape(3, 1) + q_0[3:].reshape(3, 1)
+alpha_0_ = q[3:].reshape(3, 1) + q_0[3:].reshape(3, 1)
 
-Length = np.empty(0)
-r = np.empty((0, 3))
-u_z = np.empty((0, 3))
-alpha = np.empty((0, 3))
+# initial twist
+uz_0_ = np.array([0, 0, 0])
 
-for seg in range(0, len(segment.S)):
-    # Initial conditions, 3 initial twist + 3 initial angle + 3 initial position + 9 initial rotation matrix
-    y_0 = np.vstack((uz_0, alpha_0, r_0, R_0)).ravel()
-    s_span = np.linspace(span[seg], span[seg + 1] - 1e-6, num=50)
-    s = odeint(ode_eq, y_0, s_span, args=(segment.U_x[:, seg], segment.U_y[:, seg], segment.EI[:, seg], segment.GJ))
-    # s = ode = ode(ode_eq, jac = None).set_integrator('dopri5') s.set_initial_value(y_0, span[seg]).set_f_params(
-    # segment1.U_x[:, seg], segment1.U_y[:, seg], segment1.EI[:, seg], segment1.GJ)
-    Length = np.append(Length, s_span)
-    u_z = np.vstack((u_z, s[:, (0, 1, 2)]))
-    alpha = np.vstack((alpha, s[:, (3, 4, 5)]))
-    r = np.vstack((r, s[:, (6, 7, 8)]))
+shape, u_z, tip = ctr_model(uz_0_, alpha_0_, r_0_, R_0_)
 
-    # new boundary conditions for next segment
-    r_0 = r[-1, :].reshape(3, 1)
-    R_0 = np.array(s[-1, 9:]).reshape(9, 1)
-    uz_0 = u_z[-1, :].reshape(3, 1)
-    alpha_0 = alpha[-1, :].reshape(3, 1)
+print(tip)
 
-
-
-d_tip = np.array([tube1.L, tube2.L, tube3.L]) + beta
-#
 # show execution time
 print("--- %s seconds ---" % (time.time() - start_time))
-#
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-# ax.plot(r[:, 0], r[:, 1], r[:, 2], '-b')
-# ax.auto_scale_xyz([-0.001, 0.001], [0, 0.06], [0, 0.14])
-# plt.show()
-#
 
-np.savetxt('/home/mohsen/git_ws/CTR_Control_Matlab/FileName.csv', r,  delimiter=',')
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot(shape[:, 0], shape[:, 1], shape[:, 2], '-b', linewidth=2)
+ax.plot(shape[:tip[1], 0], shape[:tip[1], 1], shape[:tip[1], 2], '-r', linewidth=3)
+ax.plot(shape[:tip[2], 0], shape[:tip[2], 1], shape[:tip[2], 2], '-g', linewidth=4)
+ax.auto_scale_xyz([min(shape[:, 0]), max(shape[:, 0])], [min(shape[:, 1]), max(shape[:, 0])], [min(shape[:, 2]), max(shape[:, 2])])
+plt.show()
+
+# Save into csv file
+np.savetxt('/home/mohsen/git_ws/CTR_Control_Matlab/FileName.csv', shape,  delimiter=',')
