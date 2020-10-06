@@ -2,9 +2,10 @@ import numpy as np
 
 
 class Segment:
-    def __init__(self, t1, t2, t3, base):
 
+    def __init__(self, t1, t2, t3, base):
         stiffness = np.array([t1.E, t2.E, t3.E])
+        torsion = np.array([t1.G, t2.G, t3.G])
         curve_x = np.array([t1.U_x, t2.U_x, t3.U_x])
         curve_y = np.array([t1.U_y, t2.U_y, t3.U_y])
 
@@ -13,9 +14,9 @@ class Segment:
         points = np.hstack((0, base, d_c, d_tip))
         index = np.argsort(points)
         segment_length = 1e-5 * np.floor(1e5 * np.diff(np.sort(points)))
-        # Length of each segment (used floor because diff command doesn't give absolute zero sometimes)
 
         e = np.zeros((3, segment_length.size))
+        g = np.zeros((3, segment_length.size))
         u_x = np.zeros((3, segment_length.size))
         u_y = np.zeros((3, segment_length.size))
 
@@ -37,20 +38,27 @@ class Segment:
                     c += 1
 
             e[i, np.arange(a, c)] = stiffness[i]
+            g[i, np.arange(a, c)] = torsion[i]
             u_x[i, np.arange(b, c)] = curve_x[i]
             u_y[i, np.arange(b, c)] = curve_y[i]
 
         # Getting rid of zero lengths
         length = segment_length[np.nonzero(segment_length)]
         ee = e[:, np.nonzero(segment_length)]
+        gg = g[:, np.nonzero(segment_length)]
         uu_x = u_x[:, np.nonzero(segment_length)]
         uu_y = u_y[:, np.nonzero(segment_length)]
 
         length_sum = np.cumsum(length)
         self.S = length_sum[length_sum + min(base) > 0] + min(base)  # s is segmented abscissa of tube after template
+
         # Truncating matrices, removing elements that correspond to the tube before the template
         e_t = ee[length_sum + min(base) > 0 * ee].reshape(3, len(self.S))
         self.EI = (e_t.T * np.array([t1.I, t2.I, t3.I])).T
+        g_t = gg[length_sum + min(base) > 0 * ee].reshape(3, len(self.S))
+        self.GJ = (g_t.T * np.array([t1.J, t2.J, t3.J])).T
         self.U_x = uu_x[length_sum + min(base) > 0 * ee].reshape(3, len(self.S))
         self.U_y = uu_y[length_sum + min(base) > 0 * ee].reshape(3, len(self.S))
-        self.GJ = np.array([t1.G, t2.G, t3.G])*np.array([t1.J, t2.J, t3.J])
+
+
+

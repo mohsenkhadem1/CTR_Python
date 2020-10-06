@@ -16,7 +16,7 @@ tube1 = Tube(431e-3, 103e-3, 2 * 0.35e-3, 2 * 0.55e-3, 6.43e+10, 2.50e+10, 21.3,
 tube2 = Tube(332e-3, 113e-3, 2 * 0.7e-3, 2 * 0.9e-3, 5.25e+10, 2.14e+10, 13.108, 0)
 tube3 = Tube(174e-3, 134e-3, 2e-3, 2 * 1.1e-3, 4.71e+10, 2.97e+10, 3.5, 0)
 # Joint variables
-q = np.array([0.01, 0.015, 0.019, 0, 0, 3 * np.pi / 2])
+q = np.array([0.01, 0.015, 0.019, np.pi / 2, 5 * np.pi / 2, 3 * np.pi / 2])
 # Initial position of joints
 q_0 = np.array([-0.2858, -0.2025, -0.0945, 0, 0, 0])
 # initial twist (for ivp solver)
@@ -35,13 +35,10 @@ u_init = CTR.minimize(np.concatenate((u1_xy_0, uz_0), axis=None))
 C = CTR.comp(u_init)  # estimate compliance matrix
 J = CTR.jac(u_init)   # estimate jacobian matrix
 
-
-# Plotting the robot and principal axes of manipulability ellipsoids
-print("--- %s seconds ---" % (time.time() - start_time))
+# plot the robot shape
 fig = plt.figure()
 ax = plt.axes(projection='3d')
-print(CTR.r)
-# plot the robot shape
+
 ax.plot(CTR.r[:, 0], CTR.r[:, 1], CTR.r[:, 2], '-b',label='CTR Robot')
 ax.auto_scale_xyz([np.amin(CTR.r[:, 0]), np.amax(CTR.r[:, 0]) + 0.01],
                   [np.amin(CTR.r[:, 1]), np.amax(CTR.r[:, 1]) + 0.01],
